@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Medical Research Assistant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+
+        <h2>Research AI</h2>
+
+        <button id="newSessionBtn">New Chat</button>
+
+        <div class="toggle">
+            <label class="switch">
+                <input type="checkbox" id="contextToggle" checked>
+                <span class="slider"></span>
+            </label>
+            <span>Use Context Only</span>
+        </div>
+
+        <div id="sessionsList" class="sessions"></div>
+
+    </div>
+
+    <!-- Chat Area -->
+    <div class="main">
+
+        <div id="chatBox" class="chat-box"></div>
+
+        <div class="input-container">
+            <input
+                type="text"
+                id="queryInput"
+                placeholder="Ask about medical research..."
+                onkeydown="if(event.key==='Enter') sendQuery()"
+            >
+            <button id="sendBtn" onclick="sendQuery()">Send</button>
+        </div>
+
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>

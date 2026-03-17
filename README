@@ -1,0 +1,157 @@
+﻿# Medical RAG Chatbot (PubMed + OpenAI) - Detailed Architecture & Data Flow
+
+## 1. Project Overview
+
+This project is a Retrieval-Augmented Generation (RAG) system for medical queries using:
+- PubMed API (`eutils`) for document ingestion
+- OpenAI for query normalization, embeddings, ranking, and answer generation
+- MongoDB for session and document storage
+- FastAPI backend and lightweight frontend UI
+
+### Key directories
+- `backend/app/main.py`: API entrypoint
+- `backend/app/pipelines/rag_pipeline.py`: end-to-end RAG workflow
+- `backend/app/ingestion/pubmed_service.py`: external PubMed integration
+- `backend/app/db/mongo_service.py`: MongoDB session/paper/chat persistence
+- `backend/app/services/*`: OpenAI models and retrieval utilities
+- `frontend/`: UI for query input, session flow, and chat display
+
+---
+
+## 2. User Flow (high-level)
+
+1. Frontend (`frontend/script.js`) sends GET `/ask?query=<>&session_id=<>&use_context=<true|false>`.
+2. FastAPI route `ask` calls `run_rag(session_id, query, use_context)`.
+3. `run_rag` pulls session history and then:
+   - if `use_context=True`: reuse existing stored papers
+   - if `use_context=False`: run query normalization + PubMed ingestion + store papers
+4. Embed query, nearest neighbor retrieval, reranking, answer generation.
+5. Save QA pair in session record.
+6. Return final `answer` JSON to frontend.
+
+---
+
+## 3. Data Flow Diagram (logical)
+
+1. **Client (UI)**
+   - `sendQuery()` → request to backend `/ask`
+   - `newSession()`, `loadSession()` and `/sessions` listing
+
+2. **Backend API (`main.py`)**
+   - `/ask` → `run_rag`
+   - `/session/{id}` → `get_session`
+   - `/sessions` → `get_sessions`
+
+3. **Session context and ingestion**
+   - `mongo_service.get_chat_history` (history for LLM)
+   - `mongo_service.get_session_papers` (existing docs)
+
+4. **Conditional branches**
+   - `use_context=False`:
+     a. `query_norm.extract_search_phrase`
+     b. `ingestion.pubmed_service.search_pubmed` (ID list)
+     c. `mongo_service.ingest_and_store_papers` (fetches, values, creates embeddings, upserts session)
+   - `use_context=True`: skip ingestion
+
+5. **Retrieval + answer generation**
+   - `embedding_service.create_embedding(query)`
+   - `similarity_search.retrieve_similar` (cosine similarity top-K)
+   - `reranker.rerank` (placeholder returns same list)
+   - `llm_service.generate_answer` (GPT prompt with papers + history + guardrails)
+
+6. **Session write**
+   - `mongo_service.store_chat` push query & answer into session queries
+
+7. **Output**
+   - JSON with field `answer`
+
+---
+
+## 4. Detailed `run_rag` control path
+
+### `use_context=False` (fresh ingestion path)
+- Step A: get historical chat
+- Step B: phrase extraction for PubMed search
+- Step C: PubMed id fetch (ESearch)
+- Step D: fetch details (EFetch XML) + parse title/abstract/authors/journal
+- Step E: embed each paper (title+abstract)
+- Step F: store session & papers in Mongo
+- Step G: embedding query + similarity retrieval + rerank + answer generation
+- Step H: store chat entry with `search_term=phrase`
+
+### `use_context=True` (reuse context path)
+- Step A: get historical chat
+- Step B: load stored session papers
+- Step C: embed query + similarity retrieval + rerank + answer generation
+- Step D: store chat entry with `search_term=query`
+
+---
+
+## 5. Data ingestion flow for PubMed
+
+1. Query conversion:
+   - `extract_search_phrase(query)` → GPT transform to 4-6 word medical phrase
+2. `search_pubmed(term)` → HTTP GET to `PUBMED_BASE/esearch.fcgi` for PubMed IDs
+3. `fetch_papers(pmids)` → HTTP GET to `PUBMED_BASE/efetch.fcgi`, parse XML
+4. Parsed fields:
+   - `pmid`, `title`, `abstract`, `journal`, `authors`
+5. Build `paper_doc` with embeddings (via `create_embedding` of `title + abstract`)
+6. `sessions` MongoDB doc shape:
+   - `{session_id, papers:[paper_doc...], queries:[{query, answer, search_term}...]}`
+
+---
+
+## 6. Database contract (`sessions` collection)
+
+- `session_id` (string)
+- `papers`: array of papers with
+  - `pmid`, `title`, `abstract`, `journal`, `authors`, `embedding`
+- `queries`: history (list of {query, answer, search_term})
+
+Support endpoints:
+- `/session/{session_id}` → chat messages for selected session
+- `/sessions` → session list for sidebar
+
+---
+
+## 7. Key environment variables
+
+- `OPENAI_API_KEY` (OpenAI credentials)
+- `MONGO_URI` (e.g., `mongodb://user:pass@host:port`)
+- `MONGO_DB` (database name)
+- `PUBMED_BASE` (default PubMed eutils base URL, e.g., `https://eutils.ncbi.nlm.nih.gov/entrez/eutils`)
+- `RETMAX` (optional, default 10)
+- `PORT` (FastAPI port, e.g., 8010)
+
+---
+
+## 8. Setup and run
+
+1. Create `.env` with above variables.
+2. Backend install + run:
+   - `cd backend`
+   - `pip install -r requirements.txt`
+   - `uvicorn app.main:app --reload --port 8010`
+3. Open `frontend/index.html` in browser (or use local static file server e.g. `python -m http.server 5500`).
+4. Use toggle `Context` in UI:
+   - `off` → triggers new ingestion path
+   - `on` → uses cached session papers
+
+---
+
+## 9. Troubleshooting
+
+- `Context limit reached`: happens in `llm_service.generate_answer` if prompt exceeds token limit.
+- `PubMed timeout`: `search_pubmed` and `fetch_papers` have 3 retries + wait.
+- No papers found: results may be empty; either increase `RETMAX` or rephrase query.
+- `session_id` persistence: fresh browser constructs new `crypto.randomUUID()`, existing chat appears after session load from `sessions` endpoint.
+
+---
+
+## 10. Extension ideas
+
+- Vector store for nearest neighbor (FAISS/Chroma) for better scaling
+- Reranker to actually parse model output and reorder
+- Include `openai.Embedding` from papers, not just query
+- Add persistent user accounts + multi-session cleanup
+- Background refresh of PubMed when query term has stale results
