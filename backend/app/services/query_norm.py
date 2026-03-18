@@ -37,4 +37,15 @@ Query:
         messages=[{"role": "user", "content": prompt}]
     )
 
-    return response.choices[0].message.content.strip()
+    answer=response.choices[0].message.content.strip()
+
+    # ✅ TOKEN TRACKING HERE
+    usage = response.usage
+
+    token_data = {
+        "total_tokens": usage.total_tokens,
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens
+    }
+
+    return answer, token_data 

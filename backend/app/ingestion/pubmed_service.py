@@ -9,6 +9,17 @@ load_dotenv()
 BASE_URL = os.getenv("PUBMED_BASE")
 RETMAX = int(os.getenv("RETMAX", 10))
 
+
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
+
+
 # ✅ GLOBAL PERSISTENT CLIENT (KEEP-ALIVE)
 client = httpx.AsyncClient(
     timeout=httpx.Timeout(None), 
@@ -20,7 +31,7 @@ client = httpx.AsyncClient(
 )
 
 # -------------------------------
-# 🔍 SEARCH PUBMED
+# SEARCH PUBMED
 # -------------------------------
 async def search_pubmed(term: str):
 
@@ -33,7 +44,7 @@ async def search_pubmed(term: str):
         "retmax": RETMAX
     }
 
-    # ✅ retry logic
+    # retry logic
     for attempt in range(3):
         try:
             response = await client.get(url, params=params)
@@ -43,18 +54,18 @@ async def search_pubmed(term: str):
             return data["esearchresult"]["idlist"]
 
         except httpx.ConnectTimeout:
-            print(f"[search_pubmed] Timeout... retry {attempt+1}")
+            logger.info(f"[search_pubmed] Timeout... retry {attempt+1}")
             await asyncio.sleep(2)
 
         except Exception as e:
-            print(f"[search_pubmed] Error:", e)
+            logger.error(f"[search_pubmed] Error: {str(e)}")
             break
 
     return []
 
 
 # -------------------------------
-# 📄 FETCH PAPERS
+# FETCH PAPERS
 # -------------------------------
 async def fetch_papers(pmids: list[str]):
 
@@ -70,7 +81,7 @@ async def fetch_papers(pmids: list[str]):
         "retmode": "xml"
     }
 
-    # ✅ retry logic
+    # retry logic
     for attempt in range(3):
         try:
             response = await client.get(url, params=params)
@@ -78,11 +89,11 @@ async def fetch_papers(pmids: list[str]):
             break
 
         except httpx.ConnectTimeout:
-            print(f"[fetch_papers] Timeout... retry {attempt+1}")
+            logger.info(f"[fetch_papers] Timeout... retry {attempt+1}")
             await asyncio.sleep(2)
 
         except Exception as e:
-            print(f"[fetch_papers] Error:", e)
+            logger.error(f"[fetch_papers] Error: {str(e)}")
             return []
 
     root = ET.fromstring(response.text)
@@ -122,7 +133,7 @@ async def fetch_papers(pmids: list[str]):
 
 
 # -------------------------------
-# 🔄 OPTIONAL: CLOSE CLIENT
+# OPTIONAL: CLOSE CLIENT
 # -------------------------------
 async def close_client():
     await client.aclose()

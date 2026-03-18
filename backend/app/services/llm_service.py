@@ -1,6 +1,7 @@
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
+from app.services.eval_service import evaluate_response_safe
 load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -97,7 +98,28 @@ Remember:
             temperature=0.7
         )
 
-        return response.choices[0].message.content
+        answer = response.choices[0].message.content
+
+        # ✅ TOKEN TRACKING HERE
+        usage = response.usage
+
+        token_data = {
+            "total_tokens": usage.total_tokens,
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens
+        }
+
+
+        # ✅ ADD THIS BLOCK (DeepEval)
+        eval_scores={}
+        if context:
+            eval_scores = await evaluate_response_safe(
+                query=query,
+                answer=answer,
+                papers=papers
+            )
+
+        return answer, token_data, eval_scores
 
     except Exception as e:
 

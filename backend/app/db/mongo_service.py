@@ -44,11 +44,13 @@ async def ingest_and_store_papers(session_id, pmids):
 
     papers = []
 
+    total_token=0
     for paper in papers_data:
 
         text = f"{paper['title']} {paper['abstract']}"
 
-        embedding = create_embedding(text)
+        embedding, token_count = create_embedding(text)
+        total_token=total_token+token_count
 
         paper_doc = {
             "pmid": paper["pmid"],
@@ -73,7 +75,7 @@ async def ingest_and_store_papers(session_id, pmids):
         upsert=True
     )
 
-    return papers
+    return papers, total_token
 
 
 # -----------------------------

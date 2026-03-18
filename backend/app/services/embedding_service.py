@@ -13,4 +13,14 @@ def create_embedding(text: str):
         input=text
     )
 
-    return response.data[0].embedding
+    answer = response.data[0].embedding
+
+
+    # ✅ TOKEN TRACKING HERE
+    usage = response.usage
+
+    token_data = {
+        "embedding_tokens": usage.total_tokens
+    }
+
+    return answer, usage.total_tokens   # 👈 return both
